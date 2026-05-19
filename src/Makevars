@@ -1,0 +1,6 @@
+.PHONY: echo_vars
+
+all: echo_vars
+
+echo_vars:
+	@echo "$(.VARIABLES)"
