@@ -5,6 +5,10 @@
 gh-latest repo:
     @gh api repos/{{repo}}/releases/latest --jq .tag_name
 
+# Regenerate README.md from the CI logs in vars/.
+regen-readme:
+    @python3 dev/gen_readme.py
+
 # For every `uses:` in .github/workflows/, print the action, its current
 # pin, and the latest released tag on GitHub. Helpful before committing
 # workflow edits — see [[feedback-gha-latest-majors]].

@@ -1,296 +1,440 @@
 # r-makevars-variables
 
-A throwaway R package whose `src/Makevars` does nothing except print
-every `make` variable visible during `R CMD INSTALL`. Useful as a
-reference for what you can rely on (or override) when writing real
-`Makevars` / `Makevars.in` files.
+A throwaway R package whose `src/Makevars` prints every `make` variable
+visible during `R CMD INSTALL`. CI runs the probe on `ubuntu-latest`,
+`macos-latest`, and `windows-latest` with `r-version: 'release'` and
+commits the raw logs to [`vars/`](vars/). The cross-platform diff is
+below.
 
-## Recipe
-
-Goal: bootstrap a minimal R package with a C stub and dump every
-variable that `R CMD INSTALL` makes visible to `src/Makevars`.
-
-```sh
-# 1. Empty working directory with an ASCII, letter-led, no-underscore name
-mkdir rpkgk68 && cd rpkgk68
-
-# 2. (optional) pin an R version
-rig default 4.6
-
-# 3. Scaffold the package + license + src/ from inside R
-R --no-save <<'EOF'
-usethis::create_package(".", check = FALSE)
-usethis::use_mit_license("Mossa Merhi Reimert")
-usethis::use_c("stub")
-EOF
-```
-
-> **Naming gotcha.** `usethis::create_package(".")` derives the package
-> name from the *directory* name and rejects underscores (CRAN rule:
-> ASCII letters, digits, `.`; must start with a letter; min 2 chars; no
-> trailing `.`). Either name the directory `rpkgk68` from the start, or
-> create it with `check = FALSE` and edit the `Package:` field in
-> `DESCRIPTION` afterwards.
-
-Then drop a probe target into `src/Makevars`:
+## The probe
 
 ```make
 .PHONY: echo_vars
-
 all: echo_vars
-
 echo_vars:
 	@echo "$(.VARIABLES)"
 ```
 
-Build it:
+R's build of an installed package merges its own `Makeconf` with the
+user's `src/Makevars`. Because `all:` is the first target in the merged
+file, it runs before the SHLIB rules and `$(.VARIABLES)` prints every
+variable currently defined — R config, compiler/linker flags, make
+built-ins, and inherited environment.
 
-```sh
-R CMD INSTALL .
-```
+Full scaffolding recipe (rig, usethis, the package-name gotcha): see
+[`dev/RECIPE.md`](dev/RECIPE.md).
 
-The `all:` target runs before R's own SHLIB rules, so the list of every
-variable currently defined in `make`'s namespace is printed at the top
-of the install log.
+## Re-running
 
----
-
-## Variables emitted by `$(.VARIABLES)`
-
-Categorised below. Every token from the dump is included.
-
-### R configuration
-
-`R_CMD`, `R_HOME`, `R_VERSION`, `R_PLATFORM`, `R_ARCH`, `R_OSTYPE`,
-`R_INCLUDE_DIR`, `R_SHARE_DIR`, `R_DOC_DIR`, `R_LIBRARY_DIR`,
-`R_LIBS`, `R_LIBS_USER`, `R_LIBS_SITE`,
-`R_PACKAGE_DIR`, `R_PACKAGE_NAME`, `R_INSTALL_PKG`, `R_SESSION_TMPDIR`,
-`R_BROWSER`, `R_PDFVIEWER`, `R_PAPERSIZE`, `R_PAPERSIZE_USER`,
-`R_PRINTCMD`, `R_DEFAULT_PACKAGES`,
-`R_PKGS_BASE`, `R_PKGS_BASE1`, `R_PKGS_BASE2`, `R_PKGS_RECOMMENDED`,
-`R_BZIPCMD`, `R_GZIPCMD`, `R_ZIPCMD`, `R_UNZIPCMD`,
-`R_TEXI2DVICMD`, `R_RD4PDF`, `R_QPDF`,
-`R_XTRA_CPPFLAGS`, `R_XTRA_CFLAGS`, `R_XTRA_CXXFLAGS`, `R_XTRA_FFLAGS`,
-`R_STRIP_SHARED_LIB`, `R_STRIP_STATIC_LIB`
-
-### C / C++ compilers and flags
-
-`CC`, `CC17`, `CC23`, `CC90`, `CC99`,
-`CXX`, `CXX17`, `CXX20`, `CXX23`, `CXX26`,
-`CFLAGS`, `C17FLAGS`, `C23FLAGS`, `C90FLAGS`, `C99FLAGS`,
-`CXXFLAGS`, `CXX11FLAGS`, `CXX17FLAGS`, `CXX20FLAGS`, `CXX23FLAGS`, `CXX26FLAGS`,
-`CXX17STD`, `CXX20STD`, `CXX23STD`, `CXX26STD`,
-`CPICFLAGS`,
-`CXXPICFLAGS`, `CXX17PICFLAGS`, `CXX20PICFLAGS`, `CXX23PICFLAGS`, `CXX26PICFLAGS`,
-`CPP`, `CPPFLAGS`,
-`C_VISIBILITY`, `CXX_VISIBILITY`,
-`ALL_CFLAGS`, `ALL_CPPFLAGS`, `ALL_CXXFLAGS`
-
-### Fortran
-
-`FC`, `F77`, `FCFLAGS`, `FFLAGS`, `F77FLAGS`,
-`FPICFLAGS`, `FPIEFLAGS`,
-`FLIBS`, `FCLIBS_XTRA`,
-`P_FCFLAGS`, `SAFE_FFLAGS`, `F_VISIBILITY`,
-`ALL_FFLAGS`, `ALL_FCFLAGS`,
-`LTO_FC`, `LTO_FC_OPT`
-
-### Objective-C / Objective-C++
-
-`OBJC`, `OBJCXX`, `OBJCFLAGS`, `OBJC_LIBS`,
-`ALL_OBJCFLAGS`, `ALL_OBJCXXFLAGS`
-
-### Shared library build (`SHLIB_*`)
-
-`SHLIB`, `SHLIB_EXT`,
-`SHLIB_LD`, `SHLIB_LDFLAGS`, `SHLIB_LDFLAGS_R`, `SHLIB_LIBADD`, `SHLIB_LINK`,
-`SHLIB_CFLAGS`, `SHLIB_CXXFLAGS`, `SHLIB_CXXLD`, `SHLIB_CXXLDFLAGS`,
-`SHLIB_CXX17LD`, `SHLIB_CXX17LDFLAGS`,
-`SHLIB_CXX20LD`, `SHLIB_CXX20LDFLAGS`,
-`SHLIB_CXX23LD`, `SHLIB_CXX23LDFLAGS`,
-`SHLIB_CXX26LD`, `SHLIB_CXX26LDFLAGS`,
-`SHLIB_FCLD`, `SHLIB_FCLDFLAGS`, `SHLIB_FFLAGS`,
-`SHLIB_OPENMP_CFLAGS`, `SHLIB_OPENMP_CXXFLAGS`, `SHLIB_OPENMP_FFLAGS`
-
-### Dynamic library (macOS `.dylib`)
-
-`DYLIB_LD`, `DYLIB_LDFLAGS`, `DYLIB_LINK`, `DYLIB_EXT`
-
-### Linker, libraries, LTO
-
-`LD`, `LDFLAGS`,
-`MAIN_LD`, `MAIN_LDFLAGS`, `MAIN_LINK`,
-`LIBS`, `LIBM`, `LIBR`, `LIBR0`, `LIBR1`, `LIBnn`, `LIBINTL`, `LIBTOOL`,
-`ALL_LIBS`,
-`LTO`, `LTO_OPT`, `LTO_LD`,
-`STATIC_LIBR`,
-`STRIP_SHARED_LIB`, `STRIP_STATIC_LIB`
-
-### Binutils / archive
-
-`AR`, `ARFLAGS`, `RANLIB`, `NM`, `AS`, `LN_S`
-
-### Numerical / sanitizer libs
-
-`BLAS_LIBS`, `LAPACK_LIBS`, `SAN_LIBS`
-
-### Java
-
-`JAVA`, `JAVA_HOME`, `JAVA_CPPFLAGS`, `JAVA_LIBS`, `JAVA_LD_LIBRARY_PATH`,
-`JAVAC`, `JAVAH`, `JAR`
-
-### Tcl/Tk
-
-`TCLTK_CPPFLAGS`, `TCLTK_LIBS`
-
-### macOS frameworks
-
-`FOUNDATION_CPPFLAGS`, `FOUNDATION_LIBS`
-
-### TeX / documentation toolchain
-
-`TEX`, `TEXI2DVI`, `TEXINPUTS`, `BSTINPUTS`, `BIBINPUTS`,
-`TANGLE`, `WEAVE`, `CTANGLE`, `CWEAVE`, `MAKEINFO`
-
-### LEX / YACC
-
-`LEX`, `LEX.l`, `LEX.m`, `YACC`, `YACC.y`, `YACC.m`
-
-### Pattern rules (per language)
-
-Compile:
-`COMPILE.c`, `COMPILE.cc`, `COMPILE.cpp`, `COMPILE.C`,
-`COMPILE.S`, `COMPILE.s`,
-`COMPILE.f`, `COMPILE.F`,
-`COMPILE.def`, `COMPILE.m`, `COMPILE.mod`, `COMPILE.p`, `COMPILE.r`
-
-Link:
-`LINK.c`, `LINK.cc`, `LINK.cpp`, `LINK.C`,
-`LINK.f`, `LINK.F`, `LINK.m`, `LINK.o`, `LINK.p`, `LINK.r`,
-`LINK.S`, `LINK.s`
-
-Preprocess:
-`PREPROCESS.r`, `PREPROCESS.S`, `PREPROCESS.F`
-
-### Misc. tools
-
-`SED`, `TAR`, `RM`, `ECHO`, `ECHO_C`, `ECHO_N`, `ECHO_T`,
-`GET`, `CO`, `COFLAGS`, `CHECKOUT,v`,
-`MKINSTALLDIRS`, `M2C`,
-`LINT`, `LINT.c`,
-`PC`, `PAGER`, `EDITOR`, `OUTPUT_OPTION`
-
-### `make` itself (built-in vars)
-
-`MAKE`, `MAKEFLAGS`, `MAKELEVEL`, `MAKEFILES`, `MAKEFILEPATH`,
-`MAKEFILE_LIST`, `MAKE_COMMAND`, `MAKE_VERSION`, `MFLAGS`,
-`MAKEOVERRIDES`, `GNUMAKE`,
-`.FEATURES`, `.LIBPATTERNS`, `.DEFAULT_GOAL`, `.VARIABLES`,
-`SUFFIXES`, `CURDIR`, `SHELL`, `OBJECTS`,
-`-*-command-variables-*-`
-
-### `make` automatic-variable dir/file suffixes
-
-`@D`, `@F` (target), `%D`, `%F` (archive member),
-`*D`, `*F` (stem), `<D`, `<F` (first prereq),
-`?D`, `?F` (newer prereqs), `+D`, `+F` (prereqs w/ duplicates),
-`^D`, `^F` (prereqs deduped)
-
-### Shell / general OS environment
-
-`PATH`, `HOME`, `USER`, `LOGNAME`, `SHLVL`, `TMPDIR`, `PWD`, `_`,
-`TERM`, `TERM_PROGRAM`, `TERM_PROGRAM_VERSION`, `COLORTERM`,
-`LANG`, `LC_COLLATE`, `LESS`,
-`LSCOLORS`, `LS_COLORS`,
-`DISPLAY`, `MANPATH`, `INFOPATH`, `FPATH`,
-`ZSH`, `SSH_AUTH_SOCK`, `LIBGL_ALWAYS_SOFTWARE`
-
-### macOS-specific environment
-
-`__CFBundleIdentifier`, `__CF_USER_TEXT_ENCODING`,
-`XPC_FLAGS`, `XPC_SERVICE_NAME`, `COMMAND_MODE`,
-`SECURITYSESSIONID`, `LaunchInstanceID`, `OSLogRateLimit`
-
-### WezTerm
-
-`WEZTERM_UNIX_SOCKET`, `WEZTERM_CONFIG_DIR`, `WEZTERM_CONFIG_FILE`,
-`WEZTERM_EXECUTABLE`, `WEZTERM_EXECUTABLE_DIR`, `WEZTERM_PANE`
-
-### Atuin (shell history)
-
-`ATUIN_SESSION`, `ATUIN_HISTORY_ID`, `ATUIN_SHLVL`, `ATUIN_TMUX_POPUP`
-
-### Starship prompt
-
-`STARSHIP_SESSION_KEY`, `STARSHIP_SHELL`
-
-### Package managers
-
-`HOMEBREW_PREFIX`, `HOMEBREW_CELLAR`, `HOMEBREW_REPOSITORY`,
-`BUN_INSTALL`
-
----
+- **CI**: push to `main`, or `gh workflow run dump-makevars.yml`. The
+  workflow runs `R CMD INSTALL .` on each runner and commits the per-OS
+  install log back to `vars/`.
+- **Locally**: `R CMD INSTALL .` on whatever platform you have. The
+  variable dump appears in the install output before the compile lines.
+- **Check action pins** against the latest releases: `just check-action-versions`.
 
 ## Cross-platform availability
 
-Sourced from CI logs in [`vars/`](vars/), produced by `R CMD INSTALL .`
-on `ubuntu-latest`, `macos-latest`, `windows-latest` with `r-version:
-'release'`. Runner-image noise (`GITHUB_*`, `RUNNER_*`, `JAVA_HOME_*`,
-`GOROOT_*`, `ANDROID_*`, browser-driver paths, etc.) is filtered.
+Tables show whether each variable is set on Linux (**L**), macOS (**M**),
+and Windows (**W**) during `R CMD INSTALL`. Vars that don't surface on
+*any* of the three runners are omitted from a category.
 
-Totals per OS (after filtering): linux **277**, macos **283**, windows **333**.
+After filtering CI-runner noise (`GITHUB_*`, `RUNNER_*`, `JAVA_HOME_*`,
+`GOROOT_*`, `ANDROID_*`, browser-driver paths, …): linux **278** · macos **284** · windows **334**.
 
-### Available on all three platforms (237)
+### R configuration
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `R_CMD` | ✓ | ✓ | ✓ |
+| `R_HOME` | ✓ | ✓ | ✓ |
+| `R_VERSION` | ✓ | ✓ | ✓ |
+| `R_PLATFORM` | ✓ | ✓ |   |
+| `R_ARCH` | ✓ | ✓ | ✓ |
+| `R_OSTYPE` | ✓ | ✓ | ✓ |
+| `R_INCLUDE_DIR` | ✓ | ✓ | ✓ |
+| `R_SHARE_DIR` | ✓ | ✓ | ✓ |
+| `R_DOC_DIR` | ✓ | ✓ | ✓ |
+| `R_LIBRARY_DIR` | ✓ | ✓ | ✓ |
+| `R_LIBS` | ✓ | ✓ | ✓ |
+| `R_LIBS_USER` | ✓ | ✓ | ✓ |
+| `R_LIBS_SITE` | ✓ | ✓ | ✓ |
+| `R_PACKAGE_DIR` | ✓ | ✓ | ✓ |
+| `R_PACKAGE_NAME` | ✓ | ✓ | ✓ |
+| `R_INSTALL_PKG` | ✓ | ✓ | ✓ |
+| `R_SESSION_TMPDIR` | ✓ | ✓ |   |
+| `R_BROWSER` | ✓ | ✓ |   |
+| `R_PDFVIEWER` | ✓ | ✓ |   |
+| `R_PAPERSIZE` | ✓ | ✓ | ✓ |
+| `R_PAPERSIZE_USER` | ✓ | ✓ |   |
+| `R_PRINTCMD` | ✓ | ✓ |   |
+| `R_DEFAULT_PACKAGES` | ✓ | ✓ |   |
+| `R_PKGS_BASE` | ✓ | ✓ |   |
+| `R_PKGS_BASE1` | ✓ | ✓ |   |
+| `R_PKGS_BASE2` | ✓ | ✓ |   |
+| `R_PKGS_RECOMMENDED` | ✓ | ✓ |   |
+| `R_BZIPCMD` | ✓ | ✓ | ✓ |
+| `R_GZIPCMD` | ✓ | ✓ | ✓ |
+| `R_ZIPCMD` | ✓ | ✓ | ✓ |
+| `R_UNZIPCMD` | ✓ | ✓ | ✓ |
+| `R_TEXI2DVICMD` | ✓ | ✓ |   |
+| `R_RD4PDF` | ✓ | ✓ | ✓ |
+| `R_QPDF` |   | ✓ |   |
+| `R_XTRA_CPPFLAGS` | ✓ | ✓ | ✓ |
+| `R_XTRA_CFLAGS` | ✓ | ✓ | ✓ |
+| `R_XTRA_CXXFLAGS` | ✓ | ✓ | ✓ |
+| `R_XTRA_FFLAGS` | ✓ | ✓ | ✓ |
+| `R_STRIP_SHARED_LIB` | ✓ | ✓ |   |
+| `R_STRIP_STATIC_LIB` | ✓ | ✓ |   |
+
+### C / C++ compilers and flags
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `CC` | ✓ | ✓ | ✓ |
+| `CC17` | ✓ | ✓ | ✓ |
+| `CC23` | ✓ | ✓ | ✓ |
+| `CC90` | ✓ | ✓ | ✓ |
+| `CC99` | ✓ | ✓ | ✓ |
+| `CXX` | ✓ | ✓ | ✓ |
+| `CXX17` | ✓ | ✓ | ✓ |
+| `CXX20` | ✓ | ✓ | ✓ |
+| `CXX23` | ✓ | ✓ | ✓ |
+| `CXX26` | ✓ | ✓ | ✓ |
+| `CFLAGS` | ✓ | ✓ | ✓ |
+| `C17FLAGS` | ✓ | ✓ | ✓ |
+| `C23FLAGS` | ✓ | ✓ | ✓ |
+| `C90FLAGS` | ✓ | ✓ | ✓ |
+| `C99FLAGS` | ✓ | ✓ | ✓ |
+| `CXXFLAGS` | ✓ | ✓ | ✓ |
+| `CXX17FLAGS` | ✓ | ✓ | ✓ |
+| `CXX20FLAGS` | ✓ | ✓ | ✓ |
+| `CXX23FLAGS` | ✓ | ✓ | ✓ |
+| `CXX26FLAGS` | ✓ | ✓ | ✓ |
+| `CXX17STD` | ✓ | ✓ | ✓ |
+| `CXX20STD` | ✓ | ✓ | ✓ |
+| `CXX23STD` | ✓ | ✓ | ✓ |
+| `CXX26STD` | ✓ | ✓ | ✓ |
+| `CPICFLAGS` | ✓ | ✓ | ✓ |
+| `CXXPICFLAGS` | ✓ | ✓ | ✓ |
+| `CXX17PICFLAGS` | ✓ | ✓ | ✓ |
+| `CXX20PICFLAGS` | ✓ | ✓ | ✓ |
+| `CXX23PICFLAGS` | ✓ | ✓ | ✓ |
+| `CXX26PICFLAGS` | ✓ | ✓ | ✓ |
+| `CPP` | ✓ | ✓ | ✓ |
+| `CPPFLAGS` | ✓ | ✓ | ✓ |
+| `C_VISIBILITY` | ✓ | ✓ | ✓ |
+| `CXX_VISIBILITY` | ✓ | ✓ |   |
+| `ALL_CFLAGS` | ✓ | ✓ | ✓ |
+| `ALL_CPPFLAGS` | ✓ | ✓ | ✓ |
+| `ALL_CXXFLAGS` | ✓ | ✓ | ✓ |
+
+### Fortran
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `FC` | ✓ | ✓ | ✓ |
+| `F77` | ✓ | ✓ | ✓ |
+| `FCFLAGS` | ✓ | ✓ | ✓ |
+| `FFLAGS` | ✓ | ✓ | ✓ |
+| `F77FLAGS` | ✓ | ✓ | ✓ |
+| `FPICFLAGS` | ✓ | ✓ | ✓ |
+| `FPIEFLAGS` | ✓ | ✓ |   |
+| `FLIBS` | ✓ | ✓ | ✓ |
+| `FCLIBS_XTRA` | ✓ | ✓ | ✓ |
+| `P_FCFLAGS` | ✓ | ✓ | ✓ |
+| `SAFE_FFLAGS` | ✓ | ✓ | ✓ |
+| `F_VISIBILITY` | ✓ | ✓ | ✓ |
+| `ALL_FFLAGS` | ✓ | ✓ | ✓ |
+| `ALL_FCFLAGS` | ✓ | ✓ | ✓ |
+| `LTO_FC` | ✓ | ✓ |   |
+| `LTO_FC_OPT` | ✓ | ✓ |   |
+
+### Objective-C / Objective-C++
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `OBJC` | ✓ | ✓ | ✓ |
+| `OBJCXX` | ✓ | ✓ | ✓ |
+| `OBJCFLAGS` | ✓ | ✓ | ✓ |
+| `OBJC_LIBS` | ✓ | ✓ | ✓ |
+| `ALL_OBJCFLAGS` | ✓ | ✓ | ✓ |
+| `ALL_OBJCXXFLAGS` | ✓ | ✓ | ✓ |
+
+### Shared library build (`SHLIB_*`)
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `SHLIB` | ✓ | ✓ | ✓ |
+| `SHLIB_EXT` | ✓ | ✓ | ✓ |
+| `SHLIB_LD` | ✓ | ✓ | ✓ |
+| `SHLIB_LDFLAGS` | ✓ | ✓ | ✓ |
+| `SHLIB_LDFLAGS_R` | ✓ | ✓ |   |
+| `SHLIB_LIBADD` | ✓ | ✓ | ✓ |
+| `SHLIB_LINK` | ✓ | ✓ | ✓ |
+| `SHLIB_CFLAGS` | ✓ | ✓ | ✓ |
+| `SHLIB_CXXFLAGS` | ✓ | ✓ | ✓ |
+| `SHLIB_CXXLD` | ✓ | ✓ | ✓ |
+| `SHLIB_CXXLDFLAGS` | ✓ | ✓ | ✓ |
+| `SHLIB_CXX17LD` | ✓ | ✓ | ✓ |
+| `SHLIB_CXX17LDFLAGS` | ✓ | ✓ | ✓ |
+| `SHLIB_CXX20LD` | ✓ | ✓ | ✓ |
+| `SHLIB_CXX20LDFLAGS` | ✓ | ✓ | ✓ |
+| `SHLIB_CXX23LD` | ✓ | ✓ | ✓ |
+| `SHLIB_CXX23LDFLAGS` | ✓ | ✓ | ✓ |
+| `SHLIB_CXX26LD` | ✓ | ✓ | ✓ |
+| `SHLIB_CXX26LDFLAGS` | ✓ | ✓ | ✓ |
+| `SHLIB_FCLD` | ✓ | ✓ | ✓ |
+| `SHLIB_FCLDFLAGS` | ✓ | ✓ | ✓ |
+| `SHLIB_FFLAGS` | ✓ | ✓ | ✓ |
+| `SHLIB_OPENMP_CFLAGS` | ✓ | ✓ | ✓ |
+| `SHLIB_OPENMP_CXXFLAGS` | ✓ | ✓ | ✓ |
+| `SHLIB_OPENMP_FFLAGS` | ✓ | ✓ | ✓ |
+| `SHLIB_OPENMP_FCFLAGS` |   |   | ✓ |
+| `SHLIB_PTHREAD_FLAGS` |   |   | ✓ |
+
+### Dynamic library (macOS `.dylib`)
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `DYLIB_LD` | ✓ | ✓ | ✓ |
+| `DYLIB_LDFLAGS` | ✓ | ✓ | ✓ |
+| `DYLIB_LINK` | ✓ | ✓ | ✓ |
+| `DYLIB_EXT` | ✓ | ✓ | ✓ |
+
+### Linker, libraries, LTO
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `LD` | ✓ | ✓ | ✓ |
+| `LDFLAGS` | ✓ | ✓ | ✓ |
+| `MAIN_LD` | ✓ | ✓ |   |
+| `MAIN_LDFLAGS` | ✓ | ✓ |   |
+| `MAIN_LINK` | ✓ | ✓ |   |
+| `LIBS` | ✓ | ✓ | ✓ |
+| `LIBM` | ✓ | ✓ | ✓ |
+| `LIBR` | ✓ | ✓ | ✓ |
+| `LIBR0` | ✓ | ✓ |   |
+| `LIBR1` | ✓ | ✓ |   |
+| `LIBnn` | ✓ | ✓ | ✓ |
+| `LIBINTL` | ✓ | ✓ | ✓ |
+| `LIBTOOL` | ✓ | ✓ | ✓ |
+| `ALL_LIBS` | ✓ | ✓ | ✓ |
+| `LTO` | ✓ | ✓ | ✓ |
+| `LTO_OPT` | ✓ | ✓ | ✓ |
+| `LTO_LD` | ✓ | ✓ |   |
+| `STATIC_LIBR` | ✓ | ✓ | ✓ |
+| `STRIP_SHARED_LIB` | ✓ | ✓ | ✓ |
+| `STRIP_STATIC_LIB` | ✓ | ✓ | ✓ |
+
+### Binutils / archive
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `AR` | ✓ | ✓ | ✓ |
+| `ARFLAGS` | ✓ | ✓ | ✓ |
+| `RANLIB` | ✓ | ✓ | ✓ |
+| `NM` | ✓ | ✓ | ✓ |
+| `AS` | ✓ | ✓ | ✓ |
+| `LN_S` | ✓ | ✓ |   |
+
+### Numerical / sanitizer libs
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `BLAS_LIBS` | ✓ | ✓ | ✓ |
+| `LAPACK_LIBS` | ✓ | ✓ | ✓ |
+| `SAN_LIBS` | ✓ | ✓ |   |
+| `ZLIB_LIBS` |   |   | ✓ |
+
+### Java
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `JAVA` | ✓ | ✓ | ✓ |
+| `JAVA_HOME` | ✓ | ✓ | ✓ |
+| `JAVA_CPPFLAGS` | ✓ | ✓ | ✓ |
+| `JAVA_LIBS` | ✓ | ✓ | ✓ |
+| `JAVA_LD_LIBRARY_PATH` | ✓ | ✓ |   |
+| `JAVAC` | ✓ | ✓ | ✓ |
+| `JAVAH` | ✓ | ✓ | ✓ |
+| `JAR` | ✓ | ✓ | ✓ |
+
+### Tcl/Tk
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `TCLTK_CPPFLAGS` | ✓ | ✓ | ✓ |
+| `TCLTK_LIBS` | ✓ | ✓ | ✓ |
+
+### macOS frameworks
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `FOUNDATION_CPPFLAGS` | ✓ | ✓ | ✓ |
+| `FOUNDATION_LIBS` | ✓ | ✓ | ✓ |
+
+### TeX / documentation toolchain
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `TEX` | ✓ | ✓ | ✓ |
+| `TEXI2DVI` | ✓ | ✓ | ✓ |
+| `TEXINPUTS` | ✓ | ✓ | ✓ |
+| `BSTINPUTS` | ✓ | ✓ | ✓ |
+| `BIBINPUTS` | ✓ | ✓ | ✓ |
+| `TANGLE` | ✓ | ✓ | ✓ |
+| `WEAVE` | ✓ | ✓ | ✓ |
+| `CTANGLE` | ✓ | ✓ | ✓ |
+| `CWEAVE` | ✓ | ✓ | ✓ |
+| `MAKEINFO` | ✓ | ✓ | ✓ |
+
+### LEX / YACC
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `LEX` | ✓ | ✓ | ✓ |
+| `LEX.l` | ✓ | ✓ | ✓ |
+| `LEX.m` | ✓ | ✓ | ✓ |
+| `YACC` | ✓ | ✓ | ✓ |
+| `YACC.y` | ✓ | ✓ | ✓ |
+| `YACC.m` | ✓ | ✓ | ✓ |
+
+### Compile / link / preprocess pattern rules
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `COMPILE.c` | ✓ | ✓ | ✓ |
+| `COMPILE.cc` | ✓ | ✓ | ✓ |
+| `COMPILE.cpp` | ✓ | ✓ | ✓ |
+| `COMPILE.C` | ✓ | ✓ | ✓ |
+| `COMPILE.S` | ✓ | ✓ | ✓ |
+| `COMPILE.s` | ✓ | ✓ | ✓ |
+| `COMPILE.f` | ✓ | ✓ | ✓ |
+| `COMPILE.F` | ✓ | ✓ | ✓ |
+| `COMPILE.def` | ✓ | ✓ | ✓ |
+| `COMPILE.m` | ✓ | ✓ | ✓ |
+| `COMPILE.mod` | ✓ | ✓ | ✓ |
+| `COMPILE.p` | ✓ | ✓ | ✓ |
+| `COMPILE.r` | ✓ | ✓ | ✓ |
+| `LINK.c` | ✓ | ✓ | ✓ |
+| `LINK.cc` | ✓ | ✓ | ✓ |
+| `LINK.cpp` | ✓ | ✓ | ✓ |
+| `LINK.C` | ✓ | ✓ | ✓ |
+| `LINK.f` | ✓ | ✓ | ✓ |
+| `LINK.F` | ✓ | ✓ | ✓ |
+| `LINK.m` | ✓ | ✓ | ✓ |
+| `LINK.o` | ✓ | ✓ | ✓ |
+| `LINK.p` | ✓ | ✓ | ✓ |
+| `LINK.r` | ✓ | ✓ | ✓ |
+| `LINK.S` | ✓ | ✓ | ✓ |
+| `LINK.s` | ✓ | ✓ | ✓ |
+| `PREPROCESS.r` | ✓ | ✓ | ✓ |
+| `PREPROCESS.S` | ✓ | ✓ | ✓ |
+| `PREPROCESS.F` | ✓ | ✓ | ✓ |
+
+### Misc. build tools
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `SED` | ✓ | ✓ | ✓ |
+| `TAR` | ✓ | ✓ | ✓ |
+| `RM` | ✓ | ✓ | ✓ |
+| `ECHO` | ✓ | ✓ | ✓ |
+| `ECHO_C` | ✓ | ✓ | ✓ |
+| `ECHO_N` | ✓ | ✓ | ✓ |
+| `ECHO_T` | ✓ | ✓ | ✓ |
+| `GET` | ✓ | ✓ | ✓ |
+| `CO` | ✓ | ✓ | ✓ |
+| `COFLAGS` | ✓ | ✓ | ✓ |
+| `CHECKOUT,v` | ✓ | ✓ | ✓ |
+| `MKINSTALLDIRS` | ✓ | ✓ | ✓ |
+| `M2C` | ✓ | ✓ | ✓ |
+| `LINT` | ✓ | ✓ | ✓ |
+| `LINT.c` | ✓ | ✓ | ✓ |
+| `PC` | ✓ | ✓ | ✓ |
+| `PAGER` | ✓ | ✓ |   |
+| `EDITOR` | ✓ | ✓ |   |
+| `OUTPUT_OPTION` | ✓ | ✓ | ✓ |
+
+### `make` built-in variables
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `MAKE` | ✓ | ✓ | ✓ |
+| `MAKEFLAGS` | ✓ | ✓ | ✓ |
+| `MAKELEVEL` | ✓ | ✓ | ✓ |
+| `MAKEFILES` | ✓ | ✓ | ✓ |
+| `MAKEFILEPATH` |   | ✓ |   |
+| `MAKEFILE_LIST` | ✓ | ✓ | ✓ |
+| `MAKE_COMMAND` | ✓ | ✓ | ✓ |
+| `MAKE_VERSION` | ✓ | ✓ | ✓ |
+| `MFLAGS` | ✓ | ✓ | ✓ |
+| `MAKEOVERRIDES` | ✓ | ✓ | ✓ |
+| `GNUMAKE` |   | ✓ |   |
+| `GNUMAKEFLAGS` | ✓ |   | ✓ |
+| `MAKE_HOST` | ✓ |   | ✓ |
+| `.FEATURES` | ✓ | ✓ | ✓ |
+| `.LIBPATTERNS` | ✓ | ✓ | ✓ |
+| `.DEFAULT_GOAL` | ✓ | ✓ | ✓ |
+| `.VARIABLES` | ✓ | ✓ | ✓ |
+| `.RECIPEPREFIX` | ✓ |   | ✓ |
+| `.SHELLFLAGS` | ✓ |   | ✓ |
+| `.LOADED` | ✓ |   | ✓ |
+| `.INCLUDE_DIRS` | ✓ |   | ✓ |
+| `SUFFIXES` | ✓ | ✓ | ✓ |
+| `CURDIR` | ✓ | ✓ | ✓ |
+| `SHELL` | ✓ | ✓ | ✓ |
+| `OBJECTS` | ✓ | ✓ | ✓ |
+| `-*-command-variables-*-` | ✓ | ✓ | ✓ |
+
+### `make` automatic-variable dir/file suffixes
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `@D` | ✓ | ✓ | ✓ |
+| `@F` | ✓ | ✓ | ✓ |
+| `%D` | ✓ | ✓ | ✓ |
+| `%F` | ✓ | ✓ | ✓ |
+| `*D` | ✓ | ✓ | ✓ |
+| `*F` | ✓ | ✓ | ✓ |
+| `<D` | ✓ | ✓ | ✓ |
+| `<F` | ✓ | ✓ | ✓ |
+| `?D` | ✓ | ✓ | ✓ |
+| `?F` | ✓ | ✓ | ✓ |
+| `+D` | ✓ | ✓ | ✓ |
+| `+F` | ✓ | ✓ | ✓ |
+| `^D` | ✓ | ✓ | ✓ |
+| `^F` | ✓ | ✓ | ✓ |
+
+### Common POSIX environment
+
+| Variable | L | M | W |
+| --- | :-: | :-: | :-: |
+| `PATH` | ✓ | ✓ | ✓ |
+| `HOME` | ✓ | ✓ | ✓ |
+| `USER` | ✓ | ✓ |   |
+| `LOGNAME` | ✓ | ✓ |   |
+| `SHLVL` | ✓ | ✓ | ✓ |
+| `TMPDIR` |   | ✓ | ✓ |
+| `PWD` | ✓ | ✓ | ✓ |
+| `_` |   | ✓ | ✓ |
+| `LANG` | ✓ | ✓ |   |
+| `LC_COLLATE` | ✓ | ✓ | ✓ |
+
+### Platform extras
+
+Variables present in CI logs that don't fit the categories above —
+mostly Rtools/mingw-only tooling on Windows and a handful of macOS
+framework paths.
+
+**Linux + Windows** (1)
 
 ```
-%D, %F, *D, *F, +D, +F, -*-command-variables-*-, .DEFAULT_GOAL, .FEATURES,
-.LIBPATTERNS, .VARIABLES, <D, <F, ?D, ?F, @D, @F, ALL_CFLAGS, ALL_CPPFLAGS,
-ALL_CXXFLAGS, ALL_FCFLAGS, ALL_FFLAGS, ALL_LIBS, ALL_OBJCFLAGS,
-ALL_OBJCXXFLAGS, AR, ARFLAGS, AS, BIBINPUTS, BLAS_LIBS, BSTINPUTS, C17FLAGS,
-C23FLAGS, C90FLAGS, C99FLAGS, CC, CC17, CC23, CC90, CC99, CFLAGS, CHECKOUT,v,
-CO, COFLAGS, COMPILE.C, COMPILE.F, COMPILE.S, COMPILE.c, COMPILE.cc,
-COMPILE.cpp, COMPILE.def, COMPILE.f, COMPILE.m, COMPILE.mod, COMPILE.p,
-COMPILE.r, COMPILE.s, CPICFLAGS, CPP, CPPFLAGS, CTANGLE, CURDIR, CWEAVE, CXX,
-CXX17, CXX17FLAGS, CXX17PICFLAGS, CXX17STD, CXX20, CXX20FLAGS, CXX20PICFLAGS,
-CXX20STD, CXX23, CXX23FLAGS, CXX23PICFLAGS, CXX23STD, CXX26, CXX26FLAGS,
-CXX26PICFLAGS, CXX26STD, CXXFLAGS, CXXPICFLAGS, C_VISIBILITY, DYLIB_EXT,
-DYLIB_LD, DYLIB_LDFLAGS, DYLIB_LINK, ECHO, ECHO_C, ECHO_N, ECHO_T, F77,
-F77FLAGS, FC, FCFLAGS, FCLIBS_XTRA, FFLAGS, FLIBS, FOUNDATION_CPPFLAGS,
-FOUNDATION_LIBS, FPICFLAGS, F_VISIBILITY, GET, HOME, JAR, JAVA, JAVAC, JAVAH,
-JAVA_CPPFLAGS, JAVA_LIBS, LAPACK_LIBS, LC_COLLATE, LD, LDFLAGS, LEX, LEX.l,
-LEX.m, LIBINTL, LIBM, LIBR, LIBS, LIBTOOL, LIBnn, LINK.C, LINK.F, LINK.S,
-LINK.c, LINK.cc, LINK.cpp, LINK.f, LINK.m, LINK.o, LINK.p, LINK.r, LINK.s,
-LINT, LINT.c, LTO, LTO_OPT, M2C, MAKE, MAKEFILES, MAKEFILE_LIST, MAKEFLAGS,
-MAKEINFO, MAKELEVEL, MAKEOVERRIDES, MAKE_COMMAND, MAKE_VERSION, MFLAGS,
-MKINSTALLDIRS, NM, OBJC, OBJCFLAGS, OBJCXX, OBJC_LIBS, OBJECTS,
-OUTPUT_OPTION, PATH, PC, PREPROCESS.F, PREPROCESS.S, PREPROCESS.r, PWD,
-P_FCFLAGS, RANLIB, RM, R_ARCH, R_BZIPCMD, R_CMD, R_DOC_DIR, R_GZIPCMD,
-R_HOME, R_INCLUDE_DIR, R_INSTALL_PKG, R_LIBRARY_DIR, R_LIBS, R_LIBS_SITE,
-R_LIBS_USER, R_OSTYPE, R_PACKAGE_DIR, R_PACKAGE_NAME, R_PAPERSIZE, R_RD4PDF,
-R_SHARE_DIR, R_UNZIPCMD, R_VERSION, R_XTRA_CFLAGS, R_XTRA_CPPFLAGS,
-R_XTRA_CXXFLAGS, R_XTRA_FFLAGS, R_ZIPCMD, SAFE_FFLAGS, SED, SHELL, SHLIB,
-SHLIB_CFLAGS, SHLIB_CXX17LD, SHLIB_CXX17LDFLAGS, SHLIB_CXX20LD,
-SHLIB_CXX20LDFLAGS, SHLIB_CXX23LD, SHLIB_CXX23LDFLAGS, SHLIB_CXX26LD,
-SHLIB_CXX26LDFLAGS, SHLIB_CXXFLAGS, SHLIB_CXXLD, SHLIB_CXXLDFLAGS, SHLIB_EXT,
-SHLIB_FCLD, SHLIB_FCLDFLAGS, SHLIB_FFLAGS, SHLIB_LD, SHLIB_LDFLAGS,
-SHLIB_LIBADD, SHLIB_LINK, SHLIB_OPENMP_CFLAGS, SHLIB_OPENMP_CXXFLAGS,
-SHLIB_OPENMP_FFLAGS, SHLVL, STATIC_LIBR, STRIP_SHARED_LIB, STRIP_STATIC_LIB,
-SUFFIXES, TANGLE, TAR, TCLTK_CPPFLAGS, TCLTK_LIBS, TEX, TEXI2DVI, TEXINPUTS,
-WEAVE, YACC, YACC.m, YACC.y, ^D, ^F
+PSModulePath
 ```
 
-### Linux + macOS only (POSIX) (33)
-
-```
-CXX_VISIBILITY, EDITOR, FPIEFLAGS, JAVA_LD_LIBRARY_PATH, LANG, LIBR0, LIBR1,
-LN_S, LOGNAME, LTO_FC, LTO_FC_OPT, LTO_LD, MAIN_LD, MAIN_LDFLAGS, MAIN_LINK,
-PAGER, R_BROWSER, R_DEFAULT_PACKAGES, R_PAPERSIZE_USER, R_PDFVIEWER,
-R_PKGS_BASE, R_PKGS_BASE1, R_PKGS_BASE2, R_PKGS_RECOMMENDED, R_PLATFORM,
-R_PRINTCMD, R_SESSION_TMPDIR, R_STRIP_SHARED_LIB, R_STRIP_STATIC_LIB,
-R_TEXI2DVICMD, SAN_LIBS, SHLIB_LDFLAGS_R, USER
-```
-
-### Windows only (Rtools / mingw) (87)
+**Windows only** (84)
 
 ```
 !D:, ADDQU, ALLUSERSPROFILE, APPDATA, BASE, BINDIR, BINPREF, CAT, CCBASE,
@@ -304,30 +448,22 @@ PATHEXT, PKG_CONFIG, PROCESSOR_ARCHITECTURE, PROCESSOR_IDENTIFIER,
 PROCESSOR_LEVEL, PROCESSOR_REVISION, PROGRAMFILES, PROMPT,
 PSModuleAnalysisCachePath, PUBLIC, ProgramData, ProgramFiles(x86),
 ProgramW6432, RC_ARCH, RESCOMP, R_ARCH_BIN, R_COMPILED_BY, R_INSTALLER_BUILD,
-R_RTOOLS45_PATH, R_TOOLS_SOFT, R_USER, SHLIB_OPENMP_FCFLAGS,
-SHLIB_PTHREAD_FLAGS, SORT, SYMPAT, SYSTEMDRIVE, SYSTEMROOT, TAR_OPTIONS,
-TCLBIN, TCL_HOME, TCL_VERSION, TEMP, TERM, TMP, USERDOMAIN,
-USERDOMAIN_ROAMINGPROFILE, USERNAME, USERPROFILE, USE_LLVM, WIN, WINDIR,
-ZLIB_LIBS
+R_RTOOLS45_PATH, R_TOOLS_SOFT, R_USER, SORT, SYMPAT, SYSTEMDRIVE, SYSTEMROOT,
+TAR_OPTIONS, TCLBIN, TCL_HOME, TCL_VERSION, TEMP, TERM, TMP, USERDOMAIN,
+USERDOMAIN_ROAMINGPROFILE, USERNAME, USERPROFILE, USE_LLVM, WIN, WINDIR
 ```
 
-### macOS only (11)
+**macOS only** (8)
 
 ```
-GNUMAKE, INFOPATH, LC_ALL, LC_CTYPE, MAKEFILEPATH, MANPATH, R_QPDF,
-SSH_AUTH_SOCK, XPC_FLAGS, XPC_SERVICE_NAME, __CF_USER_TEXT_ENCODING
+INFOPATH, LC_ALL, LC_CTYPE, MANPATH, SSH_AUTH_SOCK, XPC_FLAGS,
+XPC_SERVICE_NAME, __CF_USER_TEXT_ENCODING
 ```
 
-### Linux + Windows only (7)
+## Layout
 
-```
-.INCLUDE_DIRS, .LOADED, .RECIPEPREFIX, .SHELLFLAGS, GNUMAKEFLAGS, MAKE_HOST,
-PSModulePath
-```
-
-### macOS + Windows only (2)
-
-```
-TMPDIR, _
-```
-
+- [`src/Makevars`](src/Makevars) — the probe (4 lines).
+- [`vars/`](vars/) — raw `R CMD INSTALL` logs per OS, refreshed by CI.
+- [`.github/workflows/dump-makevars.yml`](.github/workflows/dump-makevars.yml) — the dump+commit workflow.
+- [`justfile`](justfile) — `gh-latest` and `check-action-versions` recipes.
+- [`dev/RECIPE.md`](dev/RECIPE.md) — original scaffolding lab notes.
