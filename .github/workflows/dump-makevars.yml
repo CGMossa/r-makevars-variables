@@ -12,9 +12,14 @@ on:
 permissions:
   contents: write
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   dump:
     name: ${{ matrix.os }}
+    if: github.actor != 'github-actions[bot]'
     strategy:
       fail-fast: false
       matrix:
@@ -29,9 +34,8 @@ jobs:
           use-public-rspm: true
 
       - name: R CMD INSTALL (Makevars echo_vars prints $(.VARIABLES))
-        shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           R CMD INSTALL . 2>&1 | tee install-${{ matrix.os }}.log
 
       - uses: actions/upload-artifact@v7
@@ -54,12 +58,14 @@ jobs:
 
       - name: Refresh vars/
         run: |
+          set -euo pipefail
           mkdir -p vars
           cp _artifacts/install-*.log vars/
           ls -la vars/
 
       - name: Commit and push
         run: |
+          set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add vars/

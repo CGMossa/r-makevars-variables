@@ -18,10 +18,11 @@ check-action-versions:
     grep -rhE '^\s*-?\s*uses:' .github/workflows \
       | sed -E 's|.*uses:[[:space:]]+||' \
       | sort -u \
-      | while read -r line; do
-          action=${line%@*}
-          pin=${line##*@}
-          repo=$(echo "$action" | cut -d/ -f1-2)
-          tag=$(gh api "repos/$repo/releases/latest" --jq .tag_name 2>/dev/null || echo "n/a")
+      | xargs -P 8 -n 1 bash -c '
+          line="$1"
+          action="${line%@*}"
+          pin="${line##*@}"
+          repo=$(cut -d/ -f1-2 <<<"$action")
+          tag=$(gh api "repos/$repo/releases/latest" --jq .tag_name 2>/dev/null || echo n/a)
           printf "%-40s pinned %-10s latest %s\n" "$action" "$pin" "$tag"
-      done
+      ' _

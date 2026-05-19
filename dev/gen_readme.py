@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Build README.md: probe explanation + cross-platform availability table
 keyed off the category structure in dev/RECIPE.md."""
-import re
+import textwrap
 from pathlib import Path
+
+PLATFORMS = ("L", "M", "W")
+PLATFORM_NAME = {"L": "linux", "M": "macos", "W": "windows"}
 
 LOGS = {
     "L": Path("vars/install-ubuntu-latest.log"),
@@ -45,11 +48,12 @@ def extract_vars(text):
 def is_noise(v):
     return v in NOISE_EXACT or any(v.startswith(p) for p in NOISE_PREFIXES)
 
-per_os = {k: extract_vars(p.read_text()) for k, p in LOGS.items()}
+per_os = {p: extract_vars(LOGS[p].read_text()) for p in PLATFORMS}
+filtered = {p: {v for v in per_os[p] if not is_noise(v)} for p in PLATFORMS}
+totals = {p: len(filtered[p]) for p in PLATFORMS}
 
-# Category structure: ordered list of (heading, [vars]).
-# Pulled from dev/RECIPE.md but pruned of personal-env categories that
-# only ever surface on a local macOS workstation.
+# Pruned of personal-env categories that only ever surface on a local
+# macOS workstation (WezTerm/Atuin/Starship/Homebrew).
 CATS = [
     ("R configuration", [
         "R_CMD","R_HOME","R_VERSION","R_PLATFORM","R_ARCH","R_OSTYPE",
@@ -170,35 +174,38 @@ CATS = [
 
 CATEGORIZED = {v for _, vs in CATS for v in vs}
 
-def mark(v, plat):
-    return "✓" if v in per_os[plat] else " "
-
-def row(v):
-    return f"| `{v}` | {mark(v,'L')} | {mark(v,'M')} | {mark(v,'W')} |"
+def avail(v):
+    return tuple(v in per_os[p] for p in PLATFORMS)
 
 def render_category(name, vars_):
-    # Only render rows that are present on at least one platform.
-    present = [v for v in vars_ if any(v in per_os[p] for p in "LMW")]
-    if not present:
+    rows = []
+    for v in vars_:
+        marks = avail(v)
+        if not any(marks):
+            continue
+        cells = " | ".join("✓" if m else " " for m in marks)
+        rows.append(f"| `{v}` | {cells} |")
+    if not rows:
         return ""
-    out = [f"### {name}", "",
-           "| Variable | L | M | W |",
-           "| --- | :-: | :-: | :-: |"]
-    out += [row(v) for v in present]
-    return "\n".join(out) + "\n"
+    header_cells = " | ".join(PLATFORMS)
+    align_cells = " | ".join(":-:" for _ in PLATFORMS)
+    return (
+        f"### {name}\n\n"
+        f"| Variable | {header_cells} |\n"
+        f"| --- | {align_cells} |\n"
+        + "\n".join(rows) + "\n"
+    )
 
-def wrap(items, width=78):
-    out, line = [], ""
-    for v in items:
-        if len(line) + len(v) + 2 > width:
-            out.append(line.rstrip())
-            line = ""
-        line += v + ", "
-    if line:
-        out.append(line.rstrip().rstrip(","))
-    return "\n".join(out)
+EXTRAS_ORDER = [
+    (PLATFORMS,        "All three"),
+    (("L", "M"),       "Linux + macOS"),
+    (("M", "W"),       "macOS + Windows"),
+    (("L", "W"),       "Linux + Windows"),
+    (("W",),           "Windows only"),
+    (("M",),           "macOS only"),
+    (("L",),           "Linux only"),
+]
 
-# ---- write README ----
 lines = []
 P = lines.append
 
@@ -237,31 +244,28 @@ P("- **Locally**: `R CMD INSTALL .` on whatever platform you have. The")
 P("  variable dump appears in the install output before the compile lines.")
 P("- **Check action pins** against the latest releases: `just check-action-versions`.")
 P("")
-totals = {p: sum(1 for v in per_os[p] if not is_noise(v)) for p in "LMW"}
 P("## Cross-platform availability")
 P("")
 P("Tables show whether each variable is set on Linux (**L**), macOS (**M**),")
 P("and Windows (**W**) during `R CMD INSTALL`. Vars that don't surface on")
 P("*any* of the three runners are omitted from a category.")
 P("")
-P(f"After filtering CI-runner noise (`GITHUB_*`, `RUNNER_*`, `JAVA_HOME_*`,")
+P("After filtering CI-runner noise (`GITHUB_*`, `RUNNER_*`, `JAVA_HOME_*`,")
 P(f"`GOROOT_*`, `ANDROID_*`, browser-driver paths, …): "
-  f"linux **{totals['L']}** · macos **{totals['M']}** · windows **{totals['W']}**.")
+  + " · ".join(f"{PLATFORM_NAME[p]} **{totals[p]}**" for p in PLATFORMS) + ".")
 P("")
 for name, vs in CATS:
     chunk = render_category(name, vs)
     if chunk:
         P(chunk)
 
-# Extras: vars in CI logs (any platform) that no category claimed.
-extras_all = sorted({v for s in per_os.values() for v in s
-                     if v not in CATEGORIZED and not is_noise(v)})
-def avail_key(v):
-    return tuple(p for p in "LMW" if v in per_os[p])
+extras_all = sorted({v for s in filtered.values() for v in s
+                     if v not in CATEGORIZED})
 
-groups = {}
+groups: dict[tuple, list[str]] = {}
 for v in extras_all:
-    groups.setdefault(avail_key(v), []).append(v)
+    key = tuple(p for p in PLATFORMS if v in per_os[p])
+    groups.setdefault(key, []).append(v)
 
 P("### Platform extras")
 P("")
@@ -269,23 +273,15 @@ P("Variables present in CI logs that don't fit the categories above —")
 P("mostly Rtools/mingw-only tooling on Windows and a handful of macOS")
 P("framework paths.")
 P("")
-LABEL = {
-    ("L","M","W"): "All three",
-    ("L","M"):    "Linux + macOS",
-    ("L","W"):    "Linux + Windows",
-    ("M","W"):    "macOS + Windows",
-    ("L",):       "Linux only",
-    ("M",):       "macOS only",
-    ("W",):       "Windows only",
-}
-for key in [("L","M","W"),("L","M"),("M","W"),("L","W"),("W",),("M",),("L",)]:
+for key, label in EXTRAS_ORDER:
     items = groups.get(key, [])
     if not items:
         continue
-    P(f"**{LABEL[key]}** ({len(items)})")
+    P(f"**{label}** ({len(items)})")
     P("")
     P("```")
-    P(wrap(items))
+    P(textwrap.fill(", ".join(items), width=78,
+                    break_long_words=False, break_on_hyphens=False))
     P("```")
     P("")
 
@@ -299,4 +295,4 @@ P("- [`dev/RECIPE.md`](dev/RECIPE.md) — original scaffolding lab notes.")
 
 Path("README.md").write_text("\n".join(lines) + "\n")
 print(f"wrote README.md: {len(lines)} lines, "
-      f"L={totals['L']} M={totals['M']} W={totals['W']}")
+      + " ".join(f"{p}={totals[p]}" for p in PLATFORMS))
